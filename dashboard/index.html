@@ -1,0 +1,1104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AgentTrust OS — Live Threat Dashboard</title>
+<style>
+/* ── Design tokens (spec §43) ─────────────────────────────────── */
+:root {
+  --bg-app:#050505; --bg-surface:#0A0A0A; --bg-soft:#101010; --bg-hover:#141414;
+  --border:rgba(229,231,235,.14); --border-strong:rgba(229,231,235,.30);
+  --text:#FFFFFF; --text2:#C9CDD4; --text3:#8E939C;
+  --green:#39ff14; --green-soft:rgba(57,255,20,.10);
+  --amber:#ffd700; --amber-soft:rgba(255,215,0,.10);
+  --red:#bf00ff; --red-text:#d24dff; /* 20% white tint of #bf00ff — magenta text passes AA on all tints */
+  --red-soft:rgba(191,0,255,.12);
+  --blue:#00e5ff; --blue-soft:rgba(0,229,255,.10);
+  --violet:#d4af37; --violet-soft:rgba(212,175,55,.12);
+  --mint:#00ff9d;
+  --sh-sm:none; --sh-md:none;
+  --r-sm:8px; --r-md:12px; --r-lg:24px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+body{font-family:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono",monospace;background:var(--bg-app);color:var(--text);font-size:14px;-webkit-font-smoothing:antialiased}
+button{font-family:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--green);outline-offset:2px;border-radius:4px}
+.app{display:flex;min-height:100vh}
+/* Sidebar */
+.sidebar{width:208px;flex-shrink:0;background:var(--bg-surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:20px 12px;position:sticky;top:0;height:100vh}
+.logo{display:flex;align-items:center;gap:10px;padding:4px 8px 2px}
+.logo svg{width:26px;height:26px;color:var(--violet);flex-shrink:0}
+.logo-name{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;font-weight:700;letter-spacing:-.2px}
+.logo-desc{font-size:11px;color:var(--text3);padding:0 8px 16px}
+.nav{display:flex;flex-direction:column;gap:2px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:var(--r-sm);color:var(--text2);font-size:13.5px;font-weight:500;background:none;border:none;width:100%;text-align:left;transition:background .12s}
+.nav-item svg{width:16px;height:16px;opacity:.75}
+.nav-item:hover{background:var(--bg-hover)}
+.nav-item.active{background:var(--violet-soft);color:var(--text);font-weight:600;box-shadow:inset 2px 0 0 var(--violet),0 0 12px rgba(212,175,55,.12)}
+.nav-item.active svg{color:var(--violet);opacity:1}
+.nav-badge{margin-left:auto;min-width:18px;height:18px;border-radius:9px;background:var(--red);color:#050505;font-size:10.5px;font-weight:600;display:flex;align-items:center;justify-content:center;padding:0 5px}
+.side-status{margin-top:auto}
+.sys-secure{background:var(--green-soft);border:1px solid rgba(57,255,20,.35);border-radius:var(--r-md);padding:12px;display:flex;gap:10px;align-items:flex-start}
+.sys-secure svg{width:18px;height:18px;color:var(--green);flex-shrink:0;margin-top:1px}
+.sys-secure b{display:block;font-size:12px;font-weight:600;color:#39ff14;letter-spacing:.3px}
+.sys-secure span{font-size:11px;color:rgba(57,255,20,.75);line-height:1.4;display:block;margin-top:2px}
+.collapse-btn{margin-top:8px;background:none;border:none;color:var(--text3);font-size:11.5px;padding:6px 10px}
+.collapse-btn:hover{color:var(--text2)}
+/* Main + header */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.header{background:var(--bg-surface);border-bottom:1px solid var(--border);padding:16px 24px 14px;position:sticky;top:0;z-index:40}
+.crumb{font-size:12px;color:var(--text3);display:flex;gap:6px;align-items:center}
+.crumb .here{color:var(--text2);font-weight:500}
+.header-row{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-top:6px;flex-wrap:wrap}
+.page-title{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:26px;font-weight:700;letter-spacing:-.4px}
+.page-sub{font-size:13px;color:var(--text2);margin-top:3px}
+.header-tools{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.live-dot{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;color:var(--text2)}
+.live-dot i{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;box-shadow:0 0 8px rgba(57,255,20,.7)}
+.live-dot.off i{background:var(--amber)}
+.last-upd{font-size:11.5px;color:var(--text3)}
+.seg{display:flex;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden}
+.seg button{border:none;background:none;padding:7px 12px;font-size:12.5px;font-weight:500;color:var(--text2);border-right:1px solid var(--border)}
+.seg button:last-child{border-right:none}
+.seg button.on{background:var(--bg-surface);color:var(--text);font-weight:600;box-shadow:var(--sh-sm)}
+.search-wrap{position:relative}
+.search-wrap input{font-family:inherit;font-size:13px;padding:8px 12px 8px 32px;width:200px;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--bg-soft);color:var(--text)}
+.search-wrap input:focus{border-color:var(--violet);background:var(--bg-surface);outline:none}
+.search-wrap svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:14px;height:14px;color:var(--text3)}
+.filter-btn{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:500;padding:8px 13px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-surface);color:var(--text2)}
+.filter-btn:hover{background:var(--bg-hover)}
+.filter-btn svg{width:14px;height:14px}
+.filter-btn.has{border-color:var(--violet);color:var(--violet);background:var(--violet-soft)}
+.degraded{display:none;background:var(--amber-soft);border:1px solid rgba(255,215,0,.3);border-radius:var(--r-md);padding:12px 16px;margin:12px 24px 0;font-size:13px;color:#ffd700;align-items:center;gap:12px}
+.degraded.on{display:flex}
+.degraded button{margin-left:auto;border:1px solid rgba(255,215,0,.35);background:var(--bg-surface);border-radius:var(--r-sm);padding:6px 14px;font-size:12.5px;font-weight:600;color:#ffd700}
+/* Content grid */
+.content{padding:24px;max-width:1700px;width:100%;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px}
+.kpi{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);padding:16px;box-shadow:var(--sh-sm);display:flex;flex-direction:column;gap:8px}
+.kpi-top{display:flex;align-items:center;gap:9px}
+.kpi-ico{width:30px;height:30px;border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center}
+.kpi-ico svg{width:16px;height:16px}
+.kpi-label{font-size:11px;font-weight:600;letter-spacing:.6px;color:var(--text3);text-transform:uppercase}
+.kpi-val{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:30px;font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.kpi-delta{font-size:11.5px;color:var(--text3);font-weight:500}
+.k-green{background:var(--green-soft);color:var(--green)} .k-blue{background:var(--blue-soft);color:var(--blue)}
+.k-red{background:var(--red-soft);color:var(--red)} .k-amber{background:var(--amber-soft);color:var(--amber)}
+/* Cards */
+.card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-md);box-shadow:var(--sh-sm);display:flex;flex-direction:column;min-width:0}
+.card-h{display:flex;align-items:center;gap:9px;padding:14px 18px 12px;border-bottom:1px solid var(--border)}
+.card-h h2{font-size:14.5px;font-weight:600;letter-spacing:-.1px}
+.card-h .sub{font-size:11.5px;color:var(--text3)}
+.card-h .grow{flex:1}
+.card-body{padding:14px 18px 16px;flex:1;min-width:0}
+.zone1{display:grid;grid-template-columns:1.05fr 1.5fr 1.15fr;gap:14px;align-items:stretch}
+.zone2{display:grid;grid-template-columns:1.3fr 1fr 1.3fr;gap:14px;align-items:stretch}
+.zone3{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:stretch}
+.content.single .zone1,.content.single .zone2,.content.single .zone3{grid-template-columns:1fr}
+/* Badges */
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:600;letter-spacing:.4px;text-transform:uppercase;padding:3px 9px;border-radius:6px;white-space:nowrap}
+.b-crit{background:var(--red-soft);color:var(--red-text)} .b-high{background:rgba(255,215,0,.10);color:#ffd700}
+.b-med{background:var(--amber-soft);color:#d4af37} .b-low{background:var(--green-soft);color:var(--green)}
+.b-blue{background:var(--blue-soft);color:var(--blue)} .b-violet{background:var(--violet-soft);color:var(--violet)}
+.b-neutral{background:var(--bg-hover);color:var(--text2)}
+.b-trust{background:var(--green-soft);color:#39ff14} .b-monitor{background:var(--amber-soft);color:#d4af37}
+.b-restrict{background:rgba(255,215,0,.10);color:#ffd700} .b-isolate{background:var(--red-soft);color:var(--red-text)}
+.blk-dot{display:inline-block;margin-left:5px;font-size:11px;cursor:help;color:var(--red);text-shadow:0 0 8px rgba(191,0,255,.8)}
+/* Priority threat */
+.pt{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--sh-md);display:flex;flex-direction:column;min-width:0}
+.pt .card-h{border-bottom:1px solid var(--border)}
+.pt-dot{width:8px;height:8px;border-radius:50%;background:var(--red);box-shadow:0 0 8px rgba(191,0,255,.7)}
+.incident{margin:14px 16px 16px;border-radius:var(--r-md);padding:16px;background:var(--red-soft);border:1px solid rgba(191,0,255,.35);flex:1;display:flex;flex-direction:column;gap:10px}
+.incident.calm{background:var(--green-soft);border-color:rgba(57,255,20,.35)}
+.inc-head{display:flex;align-items:center;gap:10px}
+.inc-sev{font-size:11px;font-weight:700;letter-spacing:.8px;color:var(--red-text);text-shadow:0 0 8px rgba(191,0,255,.55)}
+.inc-title{font-size:17px;font-weight:600;letter-spacing:-.2px;line-height:1.3}
+.inc-meta{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:12.5px}
+.inc-meta dt{color:var(--text3);font-weight:500}
+.inc-meta dd{color:var(--text);font-weight:500;word-break:break-word}
+.inc-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;padding-top:12px;border-top:1px solid rgba(191,0,255,.25)}
+.incident.calm .inc-foot{border-top-color:rgba(57,255,20,.35)}
+.inc-score b{font-size:22px;font-weight:700;color:var(--red-text);font-variant-numeric:tabular-nums}
+.inc-score span{font-size:11px;color:var(--text3);display:block;text-align:right}
+.link-btn{background:none;border:none;color:var(--blue);font-size:12.5px;font-weight:600;padding:6px 4px;display:inline-flex;align-items:center;gap:5px}
+.link-btn:hover{text-decoration:underline}
+.calm-icon{width:34px;height:34px;border-radius:50%;background:rgba(57,255,20,.2);color:var(--green);display:flex;align-items:center;justify-content:center}
+.calm-icon svg{width:18px;height:18px}
+.calm-msg b{font-size:15px;font-weight:600;color:#39ff14}
+.calm-msg p{font-size:12.5px;color:rgba(57,255,20,.75);margin-top:4px;line-height:1.45}
+</style>
+<style>
+/* Tables */
+.tbl{width:100%;border-collapse:collapse;font-size:13px}
+.tbl th{text-align:left;font-size:10.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);padding:6px 10px;border-bottom:1px solid var(--border)}
+.tbl td{padding:10px;border-bottom:1px solid rgba(229,231,235,.08);vertical-align:middle}
+.tbl tr:last-child td{border-bottom:none}
+.tbl tbody tr{cursor:pointer;transition:background .1s}
+.tbl tbody tr:hover{background:var(--bg-hover)}
+.tbl tbody tr:hover td:first-child{box-shadow:inset 2px 0 0 var(--violet)}
+.cell-time{font-size:11.5px;color:var(--text3);font-variant-numeric:tabular-nums;white-space:nowrap}
+.cell-agent{font-weight:550;font-size:12.5px}
+.cell-tool{color:var(--text2);font-size:12.5px}
+.cell-tool .tgt{color:var(--text3);font-size:11.5px;display:block;max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px}
+.trend{font-size:13px;font-weight:600}
+.trend.up{color:var(--mint)} .trend.down{color:var(--red-text)} .trend.flat{color:var(--text3)}
+.trust-cell{display:flex;align-items:center;gap:10px}
+.trust-num{font-weight:650;font-variant-numeric:tabular-nums;width:28px;text-align:right}
+.trust-bar{flex:1;height:6px;border-radius:3px;background:var(--bg-hover);overflow:hidden;min-width:48px}
+.trust-bar i{display:block;height:100%;border-radius:3px}
+.new-row{animation:rowin .5s ease}
+@keyframes rowin{from{opacity:0;transform:translateY(-6px);background:var(--violet-soft)}to{opacity:1;transform:none}}
+.view-all{margin-top:10px}
+.new-pill{display:none;align-items:center;gap:6px;font-size:11.5px;font-weight:600;color:var(--violet);background:var(--violet-soft);border:none;border-radius:999px;padding:4px 11px}
+.new-pill.on{display:inline-flex}
+.new-pill:hover{background:rgba(212,175,55,.20)}
+/* Threat center */
+.threat-row{padding:12px 18px;border-bottom:1px solid rgba(229,231,235,.08);cursor:pointer;display:grid;grid-template-columns:1fr auto;gap:2px 12px}
+.threat-row:last-child{border-bottom:none}
+.threat-row:hover{background:var(--bg-hover)}
+.tr-sev{font-size:10px;font-weight:700;letter-spacing:.7px}
+.tr-sev.CRITICAL{color:var(--red-text);text-shadow:0 0 8px rgba(191,0,255,.55)} .tr-sev.HIGH{color:#ffd700} .tr-sev.MEDIUM{color:#d4af37} .tr-sev.LOW{color:var(--text3)}
+.tr-title{font-size:13px;font-weight:600;margin-top:2px}
+.tr-meta{font-size:11.5px;color:var(--text3);margin-top:2px;grid-column:1/-1}
+.tr-score{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;align-self:center}
+.tr-score.crit{color:var(--red-text)} .tr-score.high{color:#ffd700} .tr-score.med{color:#d4af37}
+/* LLM card */
+.llm-metrics{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.llm-m{background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px}
+.llm-m .k{font-size:10px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--text3)}
+.llm-m .v{font-size:19px;font-weight:700;margin-top:5px;letter-spacing:-.3px}
+.v-crit{color:var(--red-text)} .v-high{color:#ffd700} .v-med{color:#d4af37} .v-low{color:var(--green)}
+.llm-sum{font-size:13px;line-height:1.55;color:var(--text2);background:var(--violet-soft);border-radius:var(--r-sm);padding:12px}
+.llm-status-line{font-size:11.5px;color:var(--text3);margin-top:10px;display:flex;gap:10px;flex-wrap:wrap}
+.llm-status-line b{font-weight:600;color:var(--text2)}
+.llm-review{margin-top:12px;border-top:1px solid var(--border);padding-top:12px;display:none}
+.llm-review.on{display:block}
+.llm-review .lr{padding:8px 0;border-bottom:1px dashed rgba(229,231,235,.08);font-size:12.5px}
+.llm-review .lr:last-child{border-bottom:none}
+.llm-review .lr .h{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.llm-review .lr .r{color:var(--text2);margin-top:3px;line-height:1.45}
+/* Approvals */
+.apr-row.pending-crit{background:var(--red-soft)}
+.apr-row.pending-crit td:first-child{box-shadow:inset 3px 0 0 var(--red)}
+.apr-row.decided{opacity:.55}
+.apr-actions{display:flex;gap:8px;justify-content:flex-end}
+/* the approvals table has a wide intrinsic min-width (nowrap reason + badges + time);
+   scroll inside the card instead of spilling past the card border */
+#sec-approvals .card-body{overflow-x:auto}
+.btn-ico{width:30px;height:30px;border-radius:var(--r-sm);display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent}
+.btn-ico svg{width:14px;height:14px}
+.btn-ok{background:var(--green-soft);color:var(--green);border-color:rgba(57,255,20,.4)}
+.btn-no{background:var(--red-soft);color:var(--red-text);border-color:rgba(191,0,255,.4)}
+.btn-ico:hover{filter:brightness(.96)}
+.apr-req{font-weight:550;font-size:12.5px}
+.apr-reason{font-size:11.5px;color:var(--text3);max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block}
+/* Honeypot + audit */
+.hp-val{font-family:ui-monospace,"SF Mono",Menlo,monospace;font-size:11.5px;color:var(--text2);cursor:pointer}
+.hp-val:hover{color:var(--text);text-decoration:underline}
+.audit-item{padding:10px 18px;border-bottom:1px solid rgba(229,231,235,.08);cursor:pointer}
+.audit-item:last-child{border-bottom:none}
+.audit-item:hover{background:var(--bg-hover)}
+.audit-h{display:flex;align-items:center;gap:10px}
+.audit-h .t{font-size:11.5px;color:var(--text3);font-variant-numeric:tabular-nums;white-space:nowrap;width:86px}
+.audit-h .msg{font-size:12.5px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.audit-h .src{font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.4px;font-weight:600}
+.audit-d{display:none;margin-top:10px;background:var(--bg-soft);border:1px solid var(--border);border-radius:var(--r-sm);padding:12px;font-size:12px}
+.audit-item.open .audit-d{display:block}
+.audit-d pre{font-family:ui-monospace,Menlo,monospace;font-size:11px;color:var(--text2);white-space:pre-wrap;word-break:break-word;max-height:180px;overflow:auto}
+.audit-d .row{display:flex;justify-content:space-between;gap:12px;margin-bottom:4px}
+.audit-d .row span:first-child{color:var(--text3)}
+/* Drawer */
+.drawer-bg{position:fixed;inset:0;background:rgba(0,0,0,.72);opacity:0;pointer-events:none;transition:opacity .18s;z-index:80}
+.drawer-bg.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:-520px;width:500px;max-width:94vw;height:100vh;background:var(--bg-surface);border-left:1px solid var(--border-strong);z-index:90;transition:right .22s ease;display:flex;flex-direction:column}
+.drawer.on{right:0}
+.drawer-h{padding:20px 22px 16px;border-bottom:1px solid var(--border);position:relative}
+.drawer-h .title{font-size:17px;font-weight:600;letter-spacing:-.2px;margin-top:8px;line-height:1.3}
+.drawer-h .x{position:absolute;top:14px;right:14px;width:30px;height:30px;border-radius:var(--r-sm);border:1px solid var(--border);background:var(--bg-surface);display:flex;align-items:center;justify-content:center;color:var(--text2)}
+.drawer-h .x:hover{background:var(--bg-hover)}
+.drawer-b{flex:1;overflow-y:auto;padding:18px 22px}
+.d-sec{margin-bottom:18px}
+.d-sec h3{font-size:10.5px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--text3);margin-bottom:7px}
+.d-sec .val{font-size:13px;line-height:1.5}
+.d-sec .val code{font-family:ui-monospace,Menlo,monospace;font-size:11.5px;background:var(--bg-soft);border:1px solid var(--border);border-radius:6px;padding:2px 7px;word-break:break-all}
+.d-kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12.5px}
+.d-kv dt{color:var(--text3)} .d-kv dd{font-weight:500;word-break:break-word}
+.drawer-f{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}
+.btn{border-radius:var(--r-sm);padding:9px 16px;font-size:13px;font-weight:600;border:1px solid transparent;display:inline-flex;align-items:center;gap:7px}
+.btn svg{width:14px;height:14px}
+.btn-red{background:var(--red-soft);color:var(--red-text);border-color:rgba(191,0,255,.4)}
+.btn-ok{background:var(--green-soft);color:var(--green);border-color:rgba(57,255,20,.4)}
+.btn-no{background:var(--red-soft);color:var(--red-text);border-color:rgba(191,0,255,.4)}
+.btn-ghost{background:var(--bg-surface);color:var(--text2);border-color:var(--border)}
+.btn-ghost:hover{background:var(--bg-hover)}
+/* Popover + toast */
+.popover{position:fixed;z-index:100;background:var(--bg-surface);border:1px solid var(--border-strong);border-radius:var(--r-md);box-shadow:var(--sh-md);padding:16px;width:250px;display:none}
+.popover.on{display:block}
+.popover h4{font-size:12px;font-weight:600;margin-bottom:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3)}
+.popover label{display:flex;align-items:center;gap:8px;font-size:13px;padding:5px 0;cursor:pointer;color:var(--text2)}
+.popover input[type=checkbox]{accent-color:var(--violet)}
+.popover .fsearch{width:100%;font-family:inherit;font-size:13px;padding:7px 10px;border:1px solid var(--border);border-radius:var(--r-sm);margin-bottom:10px}
+.popover .pfoot{display:flex;gap:8px;justify-content:flex-end;margin-top:12px}
+.toast{position:fixed;bottom:20px;right:20px;z-index:120;background:#101010;border:1px solid var(--border-strong);color:#fff;font-size:13px;font-weight:500;border-radius:var(--r-sm);padding:12px 18px;opacity:0;transform:translateY(8px);transition:all .2s;pointer-events:none;max-width:380px}
+.toast.on{opacity:1;transform:none}
+/* Skeleton + empty */
+.skel{background:linear-gradient(90deg,var(--bg-soft) 25%,var(--bg-hover) 50%,var(--bg-soft) 75%);background-size:200% 100%;animation:shim 1.3s infinite;border-radius:6px;height:14px;margin:8px 0}
+@keyframes shim{to{background-position:-200% 0}}
+.empty{padding:26px 18px;text-align:center;color:var(--text3)}
+.empty svg{width:30px;height:30px;color:var(--border-strong);margin-bottom:8px}
+.empty b{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:3px}
+.empty p{font-size:12px;line-height:1.5}
+/* Responsive (spec §18) */
+@media (max-width:1439px){.content{gap:16px}.card-body{padding:12px 14px 14px}.kpis{gap:10px}}
+@media (max-width:1199px){
+  .sidebar{width:64px;padding:20px 8px}
+  .logo-name,.logo-desc,.nav-item span,.nav-badge,.sys-secure span,.sys-secure b,.collapse-btn{display:none}
+  .logo{justify-content:center}.nav-item{justify-content:center}.sys-secure{justify-content:center}
+  .kpis{grid-template-columns:repeat(3,1fr)}
+  .zone1{grid-template-columns:1fr 1fr}.zone1>.pt{grid-column:1/-1}
+  .zone2{grid-template-columns:1fr 1fr}.zone3{grid-template-columns:1fr}
+}
+@media (max-width:767px){
+  .app{flex-direction:column}.sidebar{width:100%;height:auto;position:static;flex-direction:row;align-items:center;overflow-x:auto}
+  .nav{flex-direction:row}.side-status{display:none}
+  .kpis{grid-template-columns:repeat(2,1fr)}
+  .zone1,.zone2{grid-template-columns:1fr}
+  .cell-tool .tgt{max-width:120px}
+}
+</style>
+</head>
+<body><div class="app">
+  <!-- ── Sidebar ─────────────────────────────────────────────── -->
+  <aside class="sidebar" aria-label="Primary navigation">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+      <span class="logo-name">AgentTrust OS</span>
+    </div>
+    <div class="logo-desc">Autonomous Security Control</div>
+    <nav class="nav" id="nav">
+      <button class="nav-item active" data-sec="top"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg><span>Dashboard</span></button>
+      <button class="nav-item" data-sec="sec-agents"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Agents</span></button>
+      <button class="nav-item" data-sec="sec-feed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span>Interceptions</span></button>
+      <button class="nav-item" data-sec="sec-threats"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><span>Threat Center</span></button>
+      <button class="nav-item" data-sec="sec-approvals"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><span>Approvals</span><span class="nav-badge" id="navAprBadge" hidden>0</span></button>
+      <button class="nav-item" data-sec="sec-honeypot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 3 2 5 3 6l1 6h6l1-6c1-1 3-3 3-6a7 7 0 0 0-7-7z"/></svg><span>Honeypot</span></button>
+      <button class="nav-item" data-sec="sec-audit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>Audit Logs</span></button>
+    </nav>
+    <div class="side-status">
+      <div class="sys-secure" id="sysSecure">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        <div><b>SYSTEM SECURE</b><span id="sysStatusText">All core services online</span></div>
+      </div>
+      <button class="collapse-btn">Collapse</button>
+    </div>
+  </aside>
+  <!-- ── Main ────────────────────────────────────────────────── -->
+  <div class="main" id="top">
+    <header class="header">
+      <div class="crumb"><span>AgentTrust OS</span><span class="sep">/</span><span class="here">Live Threat Dashboard</span></div>
+      <div class="header-row">
+        <div>
+          <div class="page-title">Live Threat Dashboard</div>
+          <div class="page-sub">Real-time agent security posture, threats, and decisions</div>
+        </div>
+        <div class="header-tools">
+          <div class="live-dot" id="liveDot"><i></i><span id="liveText">Connecting…</span></div>
+          <span class="last-upd" id="lastUpd"></span>
+          <div class="seg" id="rangeSeg" role="group" aria-label="Time range">
+            <button data-min="15" class="on">15m</button><button data-min="60">1h</button><button data-min="360">6h</button><button data-min="1440">24h</button>
+          </div>
+          <div class="search-wrap">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input type="search" id="globalSearch" placeholder="Search AgentTrust…  ( / )" aria-label="Search agents, tools, paths">
+          </div>
+          <button class="filter-btn" id="filterBtn" aria-haspopup="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>Filters
+          </button>
+        </div>
+      </div>
+    </header>
+    <div class="degraded" id="degradedBanner" role="alert">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <div><b>Connection degraded</b> — live event stream unavailable. Last successful update: <span id="degradedTime">–</span></div>
+      <button id="retryBtn">Retry</button>
+    </div>
+    <div class="content">
+      <!-- KPI row -->
+      <section class="kpis" id="kpis" aria-label="Key metrics">
+        <div class="kpi"><div class="kpi-top"><div class="kpi-ico k-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg></div><span class="kpi-label">Active Agents</span></div><div class="kpi-val" id="kAgents">–</div><div class="kpi-delta" id="kAgentsD"></div></div>
+        <div class="kpi"><div class="kpi-top"><div class="kpi-ico k-blue"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div><span class="kpi-label">Decisions</span></div><div class="kpi-val" id="kDecisions">–</div><div class="kpi-delta" id="kDecisionsD"></div></div>
+        <div class="kpi"><div class="kpi-top"><div class="kpi-ico k-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg></div><span class="kpi-label">Blocked</span></div><div class="kpi-val" id="kBlocked">–</div><div class="kpi-delta" id="kBlockedD"></div></div>
+        <div class="kpi"><div class="kpi-top"><div class="kpi-ico k-red"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div><span class="kpi-label">Critical Threats</span></div><div class="kpi-val" id="kCrit">–</div><div class="kpi-delta" id="kCritD"></div></div>
+        <div class="kpi"><div class="kpi-top"><div class="kpi-ico k-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><span class="kpi-label">Pending Approvals</span></div><div class="kpi-val" id="kApr">–</div><div class="kpi-delta" id="kAprD"></div></div>
+      </section>
+      <!-- Zone 1 -->
+      <section class="zone1">
+        <div class="pt" id="sec-pt">
+          <div class="card-h"><span class="pt-dot" id="ptDot"></span><h2>Top Priority Threat</h2><span class="grow"></span><span class="sub" id="ptRange"></span></div>
+          <div id="ptBody"><div class="skel"></div><div class="skel"></div><div class="skel"></div></div>
+        </div>
+        <div class="card" id="sec-feed">
+          <div class="card-h"><h2>Live Interception Feed</h2><span class="grow"></span><button class="new-pill" id="newPill" aria-live="polite"><span id="newCount">0</span>&nbsp;new events</button></div>
+          <div class="card-body" style="padding-top:8px">
+            <table class="tbl" aria-label="Recent interceptions">
+              <thead><tr><th>Time</th><th>Agent</th><th>Action</th><th>Result</th><th>Risk</th></tr></thead>
+              <tbody id="feedBody"><tr><td colspan="5"><div class="skel"></div><div class="skel"></div></td></tr></tbody>
+            </table>
+            <div class="view-all"><button class="link-btn" id="feedViewAll">View all →</button></div>
+          </div>
+        </div>
+        <div class="card" id="sec-threats">
+          <div class="card-h"><h2>Threat Center</h2><span class="grow"></span><span class="sub" id="threatCount"></span></div>
+          <div id="threatBody" class="card-body" style="padding-top:2px"><div class="skel"></div><div class="skel"></div></div>
+        </div>
+      </section>
+</div>      <!-- Zone 2 -->
+      <section class="zone2">
+        <div class="card" id="sec-agents">
+          <div class="card-h"><h2>Agent Trust Overview</h2><span class="grow"></span><span class="sub" id="agentCount"></span></div>
+          <div class="card-body" style="padding-top:8px">
+            <table class="tbl" aria-label="Agent trust scores">
+              <thead><tr><th>Agent</th><th>Trust Score</th><th>State</th><th>Actions</th><th>Trend</th></tr></thead>
+              <tbody id="agentsBody"><tr><td colspan="5"><div class="skel"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" id="sec-llm">
+          <div class="card-h"><h2>LLM Second Opinion</h2><span class="badge b-violet">AI</span><span class="grow"></span><span class="sub" id="llmModel"></span></div>
+          <div class="card-body">
+            <div class="llm-metrics">
+              <div class="llm-m"><div class="k">Recommendation</div><div class="v" id="llmRec">–</div></div>
+              <div class="llm-m"><div class="k">Risk Level</div><div class="v" id="llmRisk">–</div></div>
+              <div class="llm-m"><div class="k">Signal</div><div class="v" id="llmConf">–</div></div>
+            </div>
+            <div class="llm-sum" id="llmSum">Waiting for model review…</div>
+            <div class="llm-status-line" id="llmMeta"></div>
+            <div class="llm-review" id="llmMore"></div>
+            <div class="view-all"><button class="link-btn" id="llmExpand">View Analysis →</button></div>
+          </div>
+        </div>
+        <div class="card" id="sec-approvals">
+          <div class="card-h"><h2>Approval Workflow</h2><span class="badge b-med" id="aprBadge">0 Pending</span></div>
+          <div class="card-body" style="padding-top:8px">
+            <table class="tbl" aria-label="Approval requests">
+              <thead><tr><th>Request</th><th>Agent</th><th>Risk</th><th>Time</th><th>Action</th></tr></thead>
+              <tbody id="aprBody"><tr><td colspan="5"><div class="skel"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      <!-- Zone 3 -->
+      <section class="zone3">
+        <div class="card" id="sec-honeypot">
+          <div class="card-h"><h2>Honeypot Intelligence</h2><span class="grow"></span><span class="sub" id="hpSub"></span></div>
+          <div class="card-body" style="padding-top:8px">
+            <table class="tbl" aria-label="Honeypot activity">
+              <thead><tr><th>Type</th><th>Value</th><th>Source</th><th>Risk</th><th>Time</th></tr></thead>
+              <tbody id="hpBody"><tr><td colspan="5"><div class="skel"></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card" id="sec-audit">
+          <div class="card-h"><h2>Recent Audit Log</h2><span class="grow"></span><span class="sub" id="auditCount"></span></div>
+          <div id="auditBody" style="padding-top:4px"><div class="skel"></div><div class="skel"></div></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+<!-- Details drawer -->
+<div class="drawer-bg" id="drawerBg"></div>
+<aside class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Event details">
+  <div class="drawer-h">
+    <div id="drawerBadges"></div>
+    <div class="title" id="drawerTitle">Details</div>
+    <button class="x" id="drawerClose" aria-label="Close details"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="drawer-b" id="drawerBody"></div>
+  <div class="drawer-f" id="drawerFoot"></div>
+</aside>
+<!-- Filter popover -->
+<div class="popover" id="filterPop" role="dialog" aria-label="Filters">
+  <h4>Filters</h4>
+  <h4 style="margin-bottom:4px">Severity</h4>
+  <label><input type="checkbox" data-f="sev" value="CRITICAL" checked> Critical</label>
+  <label><input type="checkbox" data-f="sev" value="HIGH" checked> High</label>
+  <label><input type="checkbox" data-f="sev" value="MEDIUM" checked> Medium</label>
+  <label><input type="checkbox" data-f="sev" value="LOW" checked> Low</label>
+  <h4 style="margin:10px 0 4px">Result</h4>
+  <label><input type="checkbox" data-f="res" value="ALLOWED" checked> Allowed</label>
+  <label><input type="checkbox" data-f="res" value="MONITORED" checked> Monitored</label>
+  <label><input type="checkbox" data-f="res" value="BLOCKED" checked> Blocked</label>
+  <label><input type="checkbox" data-f="res" value="ISOLATED" checked> Isolated</label>
+  <h4 style="margin:10px 0 4px">Agent</h4>
+  <input class="fsearch" id="filterAgent" type="search" placeholder="Search agent…">
+  <div class="pfoot">
+    <button class="btn btn-ghost" id="filterReset">Reset</button>
+    <button class="btn" id="filterApply" style="background:var(--violet);color:#050505">Apply</button>
+  </div>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+"use strict";
+/* ── Helpers ─────────────────────────────────────────────────── */
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+// All server timestamps are UTC ISO-8601 ("…+00:00" / "…Z"). Strip the zone
+// suffix but re-mark as Z so new Date() parses UTC explicitly — without the
+// "Z" the string would be parsed as *local* time and every event would
+// render 5.5 h off on this (IST) machine.
+const tsfix = s => { const m = String(s||"").match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?/); return m ? m[1] + "Z" : (s||""); };
+// All event times render in India Standard Time (Asia/Kolkata, UTC+5:30),
+// pinned regardless of the browser's local timezone.
+const IST = { timeZone: "Asia/Kolkata" };
+const fmtT = s => { const d = new Date(tsfix(s)); return isNaN(d) ? "–" : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit", ...IST}); };
+const fmtTShort = s => { const d = new Date(tsfix(s)); return isNaN(d) ? "–" : d.toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", ...IST}); };
+const trunc = (s, n) => { s = String(s ?? ""); return s.length > n ? s.slice(0, n) + "…" : s; };
+const SEV = { CRITICAL:"b-crit", HIGH:"b-high", MEDIUM:"b-med", LOW:"b-low" };
+const RES = { ALLOWED:"b-low", FLAGGED:"b-med", BLOCKED:"b-crit", ISOLATED:"b-crit", MONITORED:"b-med" };
+const resLabel = a => a === "FLAGGED" ? "MONITORED" : a;
+const trustColor = t => t >= 80 ? "var(--green)" : t >= 60 ? "var(--amber)" : t >= 30 ? "#d4af37" : "var(--red)";
+const stateBadge = a => {
+  if (a.isolated) return `<span class="badge b-isolate">Isolated</span>`;
+  const c = (a.containment_level || "NONE").toUpperCase();
+  if (c === "ISOLATE" || c === "SANDBOX") return `<span class="badge b-isolate">Isolated</span>`;
+  if (c === "RESTRICT") return `<span class="badge b-restrict">Restricted</span>`;
+  if (c === "WATCH") return `<span class="badge b-monitor">Monitor</span>`;
+  return `<span class="badge b-trust">Trusted</span>`;
+};
+function toast(msg, ms = 3500) { const t = $("toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove("on"), ms); }
+
+/* ── State ───────────────────────────────────────────────────── */
+const state = {
+  rangeMin: 15,                       // spec §6: 15m default
+  search: "",
+  filters: { sev: new Set(["CRITICAL","HIGH","MEDIUM","LOW"]), res: new Set(["ALLOWED","MONITORED","BLOCKED","ISOLATED"]), agent: "" },
+  data: { stats:null, agents:[], threats:[], logs:[], approvals:[], hpAssets:[], hpDet:[], llm:null, llmReviews:[], isolated:[] },
+  wsUp: false, lastUpdate: 0, newCount: 0, feedExpanded: false, llmExpanded: false,
+  drawerAgent: null,                    // O2: agent whose drawer is open (live blocker refresh)
+};
+const inRange = ts => state.data.lastTs === 0 ? true : (Date.now() - new Date(tsfix(ts)).getTime()) <= state.rangeMin * 60000;
+function matchQ(text) { if (!state.search) return true; return String(text||"").toLowerCase().includes(state.search.toLowerCase()); }
+function filterPass(risk, action, agent) {
+  if (!state.filters.sev.has(risk || "LOW")) return false;
+  if (!state.filters.res.has(resLabel(action || "ALLOWED"))) return false;
+  if (state.filters.agent && !String(agent||"").toLowerCase().includes(state.filters.agent.toLowerCase())) return false;
+  return true;
+}
+
+/* ── API ─────────────────────────────────────────────────────── */
+async function api(path) { const r = await fetch(path); if (!r.ok) throw new Error(path + " → " + r.status); return r.json(); }
+async function loadAll() {
+  // allSettled: ONE flaky endpoint (e.g. /llm/status during model startup) must
+  // never reject the whole load — that would leave every panel on its skeleton
+  // ("blank on refresh"). Render what succeeded; degrade only if a CORE endpoint fails.
+  const urls = ["/system/stats","/dashboard/agents","/dashboard/threats","/dashboard/logs?limit=200",
+                "/approvals","/honeypots","/honeypots/detections","/llm/status","/llm/reviews?limit=12","/isolation"];
+  const res = await Promise.allSettled(urls.map(u => api(u)));
+  const val = i => res[i].status === "fulfilled" ? res[i].value : null;
+  const failed = urls.filter((u, i) => res[i].status !== "fulfilled");
+  failed.forEach(u => console.warn("endpoint failed (panel will show stale/empty state):", u));
+  const s = val(0), a = val(1), t = val(2), l = val(3), ap = val(4), hp = val(5), hd = val(6), ll = val(7), lr = val(8), iso = val(9);
+  state.data = {
+    stats: s, agents: (a && a.agents) || [], threats: (t && t.feed) || [], logs: (l && l.logs) || [],
+    approvals: (ap && ap.approvals) || [], hpAssets: (hp && hp.assets) || [], hpDet: (hd && hd.detections) || [],
+    llm: ll, llmReviews: (lr && lr.reviews) || [], isolated: (iso && iso.isolated) || [],
+  };
+  state.data.lastTs = Date.now();
+  state.lastUpdate = Date.now();
+  $("lastUpd").textContent = "Last updated: " + new Date().toLocaleTimeString() + (failed.length ? ` · ${failed.length} endpoint(s) failed` : "");
+  renderAll();
+  // Core = the four endpoints that back the primary attention area.
+  const coreDown = [0, 1, 2, 3].some(i => res[i].status !== "fulfilled");
+  setDegraded(coreDown);
+}
+
+/* ── Priority threat (spec §36: security relevance > recency) ── */
+function pickPriority() {
+  const cands = [];
+  const now = Date.now();
+  const winMs = state.rangeMin * 60000;
+  const t = ts => now - new Date(tsfix(ts)).getTime();
+  for (const rec of state.data.logs) {
+    const ev = rec.event || {}; const d = ev.decision;
+    const ts = ev.decision ? ev.decision.timestamp : rec.timestamp;
+    if (t(ts) > winMs) continue;
+    if (ev.event_type === "TOOL_INTERCEPTED" && d) {
+      const base = { CRITICAL:100, HIGH:75, MEDIUM:50, LOW:25 }[d.risk_level] || 0;
+      const score = base + (d.action === "ISOLATED" ? 15 : 0) + (d.honeypot_hit ? 12 : 0);
+      if (score >= 50) cands.push({ score: score + (100 - Math.min(100, t(ts)/winMs*100)) / 100, kind: "decision", data: d, ts });
+    } else if (ev.event_type === "AGENT_ISOLATED") {
+      if (t(ts) <= winMs) cands.push({ score: 96, kind: "isolation", data: ev, ts });
+    }
+  }
+  for (const th of state.data.threats) {
+    if (t(th.timestamp) > winMs) continue;
+    const base = { CRITICAL:100, HIGH:80, MEDIUM:55, LOW:30 }[th.threat_level] || 0;
+    if (base >= 55) cands.push({ score: base + (th.source === "llm-review" ? 4 : 0), kind: "threat", data: th, ts: th.timestamp });
+  }
+  if (!cands.length) return null;
+  cands.sort((a, b) => b.score - a.score);
+  return cands[0];
+}
+function incidentTitle(c) {
+  if (c.kind === "isolation") return "Agent Isolated — " + (c.data.reason || "containment triggered").split("—")[0].trim();
+  if (c.kind === "threat") {
+    const dd = c.data.decision; // enriched from the decision store (server-side join)
+    if (dd && (dd.risk_reason || dd.decision_summary)) return trunc(dd.risk_reason || dd.decision_summary, 64);
+    const d = c.data;
+    if (d.source === "llm-review") return "LLM Second-Opinion Escalation";
+    if (d.reasoning) return trunc(d.reasoning, 64);
+    return "Escalated " + (d.tool || "activity");
+  }
+  const d = c.data;
+  if (d.honeypot_hit) return "Honeypot Breach — Decoy Asset Access";
+  const rr = d.risk_reason || d.decision_summary || "";
+  const m = String(rr).match(/\[(?:CRITICAL|HIGH)\]\s*(.{4,80})/);
+  return m ? trunc(m[1].trim(), 80) : (d.tool || "Security event");
+}
+function incidentTarget(d) {
+  const p = d.parameters || (typeof d.parameters === "string" ? { _raw: d.parameters } : {});
+  for (const k of ["path", "file", "target", "command", "sql", "query", "to", "url"]) if (p[k]) return trunc(p[k], 90);
+  const keys = Object.keys(p); if (keys.length) return trunc(JSON.stringify(p[keys[0]]), 90);
+  return "–";
+}
+</script>
+<script>
+/* ── Renderers ───────────────────────────────────────────────── */
+function renderKpis() {
+  const s = state.data.stats; if (!s) return;
+  const winMs = state.rangeMin * 60000, now = Date.now();
+  const dec = state.data.logs.filter(r => r.event && r.event.event_type === "TOOL_INTERCEPTED" && (now - new Date(tsfix(r.timestamp)).getTime()) <= winMs);
+  const blocked = dec.filter(r => ["BLOCKED","ISOLATED"].includes(r.event.decision.action)).length;
+  const crit = dec.filter(r => r.event.decision.risk_level === "CRITICAL" || r.event.decision.honeypot_hit).length;
+  const label = state.rangeMin === 15 ? "15m" : state.rangeMin === 60 ? "1h" : state.rangeMin + "h";
+  const d = (n, id) => $(id).innerHTML = `<b>${n}</b> in last ${label}`;
+  $("kAgents").textContent = s.total_agents; $("kAgentsD").innerHTML = `${s.isolated_agents} isolated · ${s.sandboxed_agents} sandboxed`;
+  $("kDecisions").textContent = s.total_decisions; d(dec.length, "kDecisionsD");
+  $("kBlocked").textContent = s.blocked; d(blocked, "kBlockedD");
+  $("kCrit").textContent = s.critical_threats; d(crit, "kCritD");
+  $("kApr").textContent = s.pending_approvals; $("kAprD").textContent = s.pending_approvals ? "action required" : "all clear";
+  const badge = $("navAprBadge"); badge.hidden = !s.pending_approvals; badge.textContent = s.pending_approvals;
+  $("ptRange").textContent = `last ${label}`;
+}
+function renderPriority() {
+  const c = pickPriority();
+  if (!c) {
+    $("ptDot").style.background = "var(--green)";
+    $("ptBody").innerHTML = `<div class="incident calm" style="margin:14px 16px 16px">
+      <div class="inc-head"><div class="calm-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg></div>
+      <div class="calm-msg"><b>No active critical threats</b><p>The threat engine has not detected critical events in the selected period.</p></div></div>
+      <div class="inc-foot"><span class="sub" style="font-size:11.5px;color:var(--text3)">Widen the time range to review older activity</span></div></div>`;
+    return;
+  }
+  $("ptDot").style.background = "var(--red)";
+  const d = c.kind === "decision" ? c.data : (c.kind === "threat" ? (c.data.decision ? Object.assign({}, c.data.decision, { timestamp: c.data.decision.timestamp || c.ts }) : { agent_id: c.data.agent_id, tool: c.data.tool, risk_level: c.data.threat_level, risk_score: null, action: "THREAT", parameters: {}, honeypot_hit: false, timestamp: c.ts, decision_summary: c.data.reasoning || "" }) : { agent_id: c.data.agent_id, tool: "—", risk_level: "CRITICAL", risk_score: null, action: "ISOLATED", parameters: {}, timestamp: c.ts, decision_summary: c.data.reason || "" });
+  const sev = (c.kind === "threat" ? c.data.threat_level : d.risk_level) || "CRITICAL";
+  $("ptBody").innerHTML = `<div class="incident" data-open="${c.kind}:${esc(d.agent_id || "")}:${tsfix(d.timestamp || c.ts)}">
+    <div class="inc-head"><span class="inc-sev">${esc(sev)}</span>${d.honeypot_hit ? '<span class="badge b-crit">HONEYPOT</span>' : ""}</div>
+    <div class="inc-title">${esc(incidentTitle(c))}</div>
+    <dl class="inc-meta">
+      <dt>Agent</dt><dd>${esc(d.agent_id || "–")}</dd>
+      <dt>Action</dt><dd>${esc(d.tool || "–")}</dd>
+      <dt>Target</dt><dd>${esc(incidentTarget(d))}</dd>
+      <dt>Time</dt><dd>${fmtT(d.timestamp || c.ts)}</dd>
+      <dt>Outcome</dt><dd>${esc(d.action || c.kind.toUpperCase())}</dd>
+    </dl>
+    <div class="inc-foot">
+      <button class="link-btn" id="ptDetails">View Full Details →</button>
+      <div class="inc-score">${d.risk_score != null ? `<b>${d.risk_score}</b>` : ""}<span>/ 100 risk score</span></div>
+    </div></div>`;
+  const open = () => openDrawerFromEvent(c.kind, c.kind === "threat" ? c.data : d, c.ts);
+  $("ptDetails").onclick = open;
+  document.querySelector("#ptBody .incident").onclick = open;
+}
+function feedRows(limit = 12) {
+  const rows = [];
+  for (const rec of state.data.logs.slice().reverse()) {
+    const ev = rec.event || {}; let d = null;
+    if (ev.event_type === "TOOL_INTERCEPTED" && ev.decision) d = Object.assign({}, ev.decision);
+    else if (ev.event_type === "ISOLATED_CALL_REJECTED") d = { action: "ISOLATED", agent_id: ev.agent_id, tool: ev.tool, risk_level: "CRITICAL", risk_score: 100, trust_score: "–", decision_summary: "Quarantined agent call rejected", timestamp: rec.timestamp, parameters: {} };
+    if (!d) continue;
+    if (!inRange(d.timestamp)) continue;
+    if (!matchQ(`${d.agent_id} ${d.tool} ${JSON.stringify(d.parameters || {})}`)) continue;
+    if (!filterPass(d.risk_level, d.action, d.agent_id)) continue;
+    rows.push(d);
+    if (rows.length >= limit) break;
+  }
+  return rows;
+}
+function feedRowHtml(d, isNew) {
+  const p = d.parameters || {};
+  const tgt = ["path","file","command","sql","query","to"].find(k => p[k]) ? trunc(p[["path","file","command","sql","query","to"].find(k => p[k])], 70) : "";
+  return `<tr class="${isNew ? "new-row" : ""}" data-agent="${esc(d.agent_id)}" data-tool="${esc(d.tool)}" data-ts="${tsfix(d.timestamp)}" data-seq="${esc(d.audit_sequence ?? "")}" data-act="${esc(d.action)}">
+    <td class="cell-time">${fmtT(d.timestamp)}</td>
+    <td class="cell-agent">${esc(d.agent_id)}</td>
+    <td class="cell-tool">${esc(d.tool)}${tgt ? `<span class="tgt">${esc(tgt)}</span>` : ""}</td>
+    <td><span class="badge ${RES[d.action] || "b-neutral"}">${esc(resLabel(d.action))}</span></td>
+    <td><span class="badge ${SEV[d.risk_level] || "b-neutral"}">${esc(d.risk_level)}</span></td></tr>`;
+}
+function renderFeed(appendNew = false) {
+  const body = $("feedBody");
+  const rows = feedRows(state.feedExpanded ? 200 : 12);
+  if (!appendNew) body.innerHTML = rows.length ? rows.map(r => feedRowHtml(r)).join("")
+    : `<tr><td colspan="5"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg><b>No interceptions in the selected period</b><p>Try a wider time range, or clear filters and search.</p></div></td></tr>`;
+  else { const d = rows[0]; if (d) body.insertAdjacentHTML("afterbegin", feedRowHtml(d, true)); }
+  $("feedViewAll").textContent = state.feedExpanded ? "Show less →" : `View all (${feedRows(200).length}) →`;
+}
+function renderThreats() {
+  const el = $("threatBody");
+  const list = state.data.threats.filter(th => inRange(th.timestamp) && matchQ(`${th.agent_id} ${th.tool} ${th.reasoning || ""}`) && state.filters.sev.has(th.threat_level))
+    .sort((a, b) => ({CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3}[a.threat_level] - {CRITICAL:0,HIGH:1,MEDIUM:2,LOW:3}[b.threat_level]) || b.timestamp.localeCompare(a.timestamp));
+  $("threatCount").textContent = list.length ? `${list.length} active` : "";
+  if (!list.length) { el.innerHTML = `<div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg><b>No active threats</b><p>Threat correlation is quiet in the selected period.</p></div>`; return; }
+  el.innerHTML = list.slice(0, 12).map(th => {
+    const dReason = th.reasoning || ((th.decision && (th.decision.risk_reason || th.decision.decision_summary)) ? (th.decision.risk_reason || th.decision.decision_summary) : "");
+    const title = th.source === "llm-review" ? "LLM Second-Opinion Escalation" : (dReason ? trunc(dReason, 60) : `Escalated ${th.tool} activity`);
+    const cls = th.threat_level === "CRITICAL" ? "crit" : th.threat_level === "HIGH" ? "high" : th.threat_level === "MEDIUM" ? "med" : "";
+    const state2 = (Date.now() - new Date(tsfix(th.timestamp)).getTime()) < 5 * 60000 ? "In Progress" : "Monitoring";
+    return `<div class="threat-row" data-agent="${esc(th.agent_id)}" data-tool="${esc(th.tool)}" data-ts="${tsfix(th.timestamp)}">
+      <div><div class="tr-sev ${esc(th.threat_level)}">${esc(th.threat_level)}</div><div class="tr-title">${esc(title)}</div></div>
+      <div class="tr-score ${cls}">${th.agent_threat_count || ""}</div>
+      <div class="tr-state"><span class="badge ${SEV[th.threat_level]}">${esc(state2)}</span></div>
+      <div class="tr-meta">${esc(th.agent_id)} · ${fmtTShort(th.timestamp)}${th.correlated_agents && th.correlated_agents.length ? ` · correlated: ${esc(th.correlated_agents.join(", "))}` : ""}${th.mitre_technique ? ` · ${esc(th.mitre_technique)}` : ""}</div>
+    </div>`;
+  }).join("");
+}
+function renderAgents() {
+  const isoSet = new Set(state.data.isolated.map(i => i.agent_id));
+  const rows = state.data.agents.filter(a => matchQ(a.agent_id)).slice().sort((a, b) => a.trust_score - b.trust_score);
+  $("agentCount").textContent = rows.length ? `${rows.length} registered` : "";
+  $("agentsBody").innerHTML = rows.length ? rows.map(a => {
+    const t = a.trust_score;
+    const trend = a.consecutive_clean > a.consecutive_risk ? `<span class="trend up" aria-label="improving">↑</span>` : a.consecutive_risk > a.consecutive_clean ? `<span class="trend down" aria-label="degrading">↓</span>` : `<span class="trend flat" aria-label="stable">→</span>`;
+    return `<tr data-agent="${esc(a.agent_id)}" data-dtype="agent">
+      <td class="cell-agent">${esc(a.agent_id)}${isoSet.has(a.agent_id) ? ' <span class="badge b-isolate" title="Isolated">●</span>' : ""}${a.blocker_status === "BLOCKED" ? ' <span class="blk-dot" title="Blocked — one or more HARD blockers active (open row → Blockers for details + how to clear)">⛔</span>' : ""}</td>
+      <td><div class="trust-cell"><span class="trust-num" style="color:${trustColor(t)}">${Math.round(t)}</span><span class="trust-bar"><i style="width:${t}%;background:${trustColor(t)}"></i></span></div></td>
+      <td>${stateBadge({ ...a, isolated: isoSet.has(a.agent_id) })}</td>
+      <td class="cell-time">${a.total_actions}</td><td>${trend}</td></tr>`;
+  }).join("") : `<tr><td colspan="5"><div class="empty"><b>No agents registered yet</b><p>Register an agent via POST /agents/register.</p></div></td></tr>`;
+}
+function renderLLM() {
+  const st = state.data.llm; if (!st) return;
+  const done = state.data.llmReviews.filter(r => r.status === "completed" && r.verdict);
+  const latest = done.slice().sort((a, b) => (b.completed_at || 0) - (a.completed_at || 0))[0];
+  $("llmModel").textContent = st.llm.available ? st.llm.model : "offline";
+  if (!st.llm.available) {
+    $("llmRec").textContent = "OFFLINE"; $("llmRisk").textContent = "–"; $("llmConf").textContent = "–";
+    $("llmSum").textContent = "Local model unreachable — running heuristic-only mode.";
+  } else if (!latest) {
+    $("llmRec").textContent = "…"; $("llmRisk").textContent = "…"; $("llmConf").textContent = "…";
+    $("llmSum").textContent = st.queued ? `Model reviewing ${st.queued} call(s) — verdicts land here.` : "Waiting for model review…";
+  } else {
+    const v = latest.verdict;
+    const rec = v.risk_level === "CRITICAL" ? "BLOCK" : v.risk_level === "HIGH" ? "REVIEW" : v.risk_level === "MEDIUM" ? "MONITOR" : "ALLOW";
+    $("llmRec").textContent = rec; $("llmRec").className = "v v-" + v.risk_level.toLowerCase();
+    $("llmRisk").textContent = v.risk_level; $("llmRisk").className = "v v-" + v.risk_level.toLowerCase();
+    $("llmConf").textContent = v.risk_score + "%";
+    $("llmSum").textContent = `${latest.agent_id} · ${latest.tool}: ${v.reasoning}`;
+  }
+  $("llmMeta").innerHTML = st.llm.available
+    ? `<span><b>${st.completed}</b> completed</span><span><b>${st.queued}</b> queued</span><span><b>${st.escalated}</b> escalated</span><span><b>${st.failed}</b> failed</span><span><b>${st.dropped}</b> dropped</span>`
+    : `<span>circuit breaker ${st.llm.circuit_breaker_open ? "open" : "closed"} · ${esc(st.llm.last_error || "server not reachable")}</span>`;
+  $("llmMore").innerHTML = done.slice(0, 5).map(r => {
+    const v = r.verdict;
+    return `<div class="lr"><div class="h"><span class="badge ${SEV[v.risk_level]}">${esc(v.risk_level)}</span><b>${esc(r.agent_id)}</b><span class="cell-agent">${esc(r.tool)}</span><span class="cell-time">${r.duration_s}s</span>${r.escalated ? '<span class="badge b-crit">ESCALATED</span>' : ""}${r.agreement === false ? '<span class="badge b-violet">disagrees</span>' : ""}</div><div class="r">${esc(v.reasoning)}</div></div>`;
+  }).join("");
+}
+function renderApprovals() {
+  const list = state.data.approvals.slice().sort((a, b) => (a.status === "PENDING" === (b.status === "PENDING")) ? b.created_at.localeCompare(a.created_at) : (a.status === "PENDING" ? -1 : 1));
+  const pending = list.filter(a => a.status === "PENDING");
+  $("aprBadge").textContent = `${pending.length} Pending`;
+  $("aprBadge").className = "badge " + (pending.length ? "b-med" : "b-low");
+  $("aprBody").innerHTML = list.length ? list.slice(0, 8).map(a => {
+    const risk = (a.decision_ref && a.decision_ref.risk_level) || "MEDIUM";
+    const cls = a.status === "PENDING" ? (risk === "CRITICAL" ? "apr-row pending-crit" : "apr-row") : "apr-row decided";
+    const actions = a.status === "PENDING"
+      ? `<div class="apr-actions"><button class="btn-ico btn-ok" data-apr="${esc(a.id)}" data-act="approve" aria-label="Approve ${esc(a.id)}" title="Approve & release"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg></button>
+         <button class="btn-ico btn-no" data-apr="${esc(a.id)}" data-act="reject" aria-label="Reject ${esc(a.id)}" title="Reject & keep isolation"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>`
+      : `<span class="badge ${a.status === "APPROVED" ? "b-low" : "b-neutral"}">${esc(a.status)}</span>`;
+    return `<tr class="${cls}" data-agent="${esc(a.agent_id)}" data-dtype="approval" data-id="${esc(a.id)}">
+      <td><span class="apr-req">${esc(a.tool)}</span><span class="apr-reason" title="${esc(a.reason || "")}">${esc(a.reason || "")}</span></td>
+      <td class="cell-agent">${esc(a.agent_id)}</td>
+      <td><span class="badge ${SEV[risk] || "b-neutral"}">${esc(risk)}</span></td>
+      <td class="cell-time">${fmtTShort(a.created_at)}</td><td>${actions}</td></tr>`;
+  }).join("") : `<tr><td colspan="5"><div class="empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><b>All caught up</b><p>No pending approval requests.</p></div></td></tr>`;
+}
+function renderHoneypot() {
+  $("hpSub").textContent = state.data.hpDet.length ? `${state.data.hpDet.length} breach(es)` : `${state.data.hpAssets.length} decoy assets armed`;
+  const rows = [];
+  for (const d of state.data.hpDet.slice().reverse()) {
+    if (!inRange(d.detected_at) || !matchQ(`${d.agent_id || ""} ${d.asset.path} ${d.tool}`)) continue;
+    rows.push(`<tr data-dtype="honeypot"><td><span class="badge b-crit">Breach</span></td><td class="hp-val" data-full="${esc(d.asset.path)}">${esc(trunc(d.asset.path, 34))}</td><td class="cell-time">${esc(d.asset.type)} · ${esc(d.tool)}</td><td><span class="badge b-crit">Critical</span></td><td class="cell-time">${fmtTShort(d.detected_at)}</td></tr>`);
+  }
+  if (!rows.length) for (const a of state.data.hpAssets) {
+    if (!matchQ(a.path)) continue;
+    rows.push(`<tr><td>${esc(a.type)}</td><td class="hp-val" data-full="${esc(a.path)}">${esc(trunc(a.path, 34))}</td><td class="cell-time">Honeypot Engine</td><td><span class="badge b-low">Armed</span></td><td class="cell-time">planted</td></tr>`);
+  }
+  $("hpBody").innerHTML = rows.length ? rows.join("") : `<tr><td colspan="5"><div class="empty"><b>No honeypot activity</b><p>Decoy assets are armed and intact.</p></div></td></tr>`;
+}
+function auditDesc(ev) {
+  const t = ev.event_type || "";
+  if (t === "TOOL_INTERCEPTED") { const d = ev.decision || {}; return `${d.agent_id} ${d.tool} → ${d.action} (${d.risk_level} ${d.risk_score ?? ""})`.trim(); }
+  if (t === "ISOLATED_CALL_REJECTED") return `${ev.agent_id} quarantined call rejected (${ev.tool})`;
+  if (t === "AGENT_ISOLATED") return `${ev.agent_id} isolated — ${trunc(ev.reason || "", 60)}`;
+  if (t === "APPROVAL_CREATED") return `approval ${ev.approval_id} created for ${ev.agent_id}`;
+  if (t === "LLM_REVIEW") { const v = ev.verdict || {}; return `LLM review ${ev.tool} → ${v.risk_level || ev.status} (${ev.agent_id})`; }
+  if (t === "LLM_THREAT_DETECTED") return `LLM threat: ${trunc(ev.reasoning || "", 60)} (${ev.agent_id})`;
+  if (t === "AUTH_FAILURE") return `auth failure — ${trunc(ev.reason || "", 50)}`;
+  if (t === "AGENT_REGISTERED") return `${ev.agent_id} registered`;
+  if (t === "AGENT_REVOKED") return `${ev.agent_id} revoked`;
+  return t.replace(/_/g, " ").toLowerCase();
+}
+function auditSrc(ev) {
+  const t = ev.event_type || "";
+  if (t === "TOOL_INTERCEPTED") return "Pipeline";
+  if (t.startsWith("LLM")) return "LLM Review";
+  if (t.startsWith("APPROVAL")) return "Approval System";
+  if (t === "AUTH_FAILURE") return "Zero Trust";
+  if (t === "AGENT_ISOLATED" || t === "ISOLATED_CALL_REJECTED") return "Isolation";
+  return "System";
+}
+function renderAudit() {
+  const el = $("auditBody");
+  const list = state.data.logs.slice().reverse().filter(r => { const ev = r.event || {}; return inRange(r.timestamp) && matchQ(`${ev.agent_id || ""} ${auditDesc(ev)}`) && (ev.event_type !== "TOOL_INTERCEPTED" || filterPass((ev.decision || {}).risk_level, (ev.decision || {}).action, ev.agent_id)); }).slice(0, 15);
+  $("auditCount").textContent = list.length ? `${list.length} events` : "";
+  if (!list.length) { el.innerHTML = `<div class="empty"><b>No audit events in the selected period</b><p>Widen the time range to see earlier activity.</p></div>`; return; }
+  el.innerHTML = list.map(r => {
+    const ev = r.event || {}; const badge = ev.event_type === "TOOL_INTERCEPTED" ? (RES[(ev.decision || {}).action] || "b-neutral") : ev.event_type === "AGENT_ISOLATED" || ev.event_type.startsWith("LLM_THREAT") ? "b-crit" : "b-blue";
+    const label = ev.event_type === "TOOL_INTERCEPTED" ? resLabel((ev.decision || {}).action) : ev.event_type.replace(/_/g, " ");
+    return `<div class="audit-item" data-seq="${r.sequence}" data-open-audit>
+      <div class="audit-h"><span class="t">${fmtT(r.timestamp)}</span><span class="badge ${badge}">${esc(label)}</span><span class="msg">${esc(auditDesc(ev))}</span><span class="src">${esc(auditSrc(ev))}</span></div>
+      <div class="audit-d"><div class="row"><span>Event ID</span><span>#${r.sequence} · ${esc(r.hash.slice(0, 16))}…</span></div>
+      <div class="row"><span>Engine</span><span>${esc(auditSrc(ev))}</span></div>
+      <pre>${esc(JSON.stringify(ev, null, 1))}</pre></div></div>`;
+  }).join("");
+}
+/* A renderer exception must not blank the rest of the page: catch per panel, show a visible error state. */
+const PANEL_FAIL = '<div class="empty"><b>Panel failed to render</b><p>Data source is reachable — check the browser console (F12). The rest of the dashboard keeps updating.</p></div>';
+function safeRender(fn, errTarget) { try { fn(); } catch (e) { console.error("renderer error:", e); if (errTarget) { const el = $(errTarget); if (el) el.innerHTML = PANEL_FAIL; } } }
+function renderAll() {
+  safeRender(renderKpis, null); safeRender(renderPriority, "ptBody"); safeRender(renderFeed, "feedBody");
+  safeRender(renderThreats, "threatBody"); safeRender(renderAgents, "agentsBody"); safeRender(renderLLM, null);
+  safeRender(renderApprovals, "aprBody"); safeRender(renderHoneypot, "hpBody"); safeRender(renderAudit, "auditBody");
+}
+
+/* ── Drawer (spec §37) ───────────────────────────────────────── */
+function drawerSection(title, html) { return `<div class="d-sec"><h3>${esc(title)}</h3><div class="val">${html}</div></div>`; }
+function openDrawer({ title, badges, sections, foot }) {
+  $("drawerBadges").innerHTML = badges || "";
+  $("drawerTitle").textContent = title;
+  $("drawerBody").innerHTML = (sections || []).map(([t, h]) => drawerSection(t, h)).join("");
+  $("drawerFoot").innerHTML = foot || "";
+  $("drawer").classList.add("on"); $("drawerBg").classList.add("on");
+  $("drawerClose").focus();
+}
+function closeDrawer() { $("drawer").classList.remove("on"); $("drawerBg").classList.remove("on"); state.drawerAgent = null; }
+async function llmReviewsFor(agent) {
+  try { const r = await api(`/llm/reviews?agent_id=${encodeURIComponent(agent)}&limit=4`); return (r.reviews || []).filter(x => x.status === "completed" && x.verdict); } catch { return []; }
+}
+/* ── Governance (prerequisites) renderers ─────────────────────── */
+function govRowHtml(p, mark, color, note) {
+  return `<div class="val" style="margin-bottom:6px;display:flex;gap:8px;align-items:baseline"><span style="color:${color};font-weight:700" aria-hidden="true">${mark}</span><span><b>${esc(p.label)}</b>${p.source === "custom" ? ' <span class="badge b-med">custom</span>' : ""}${p.editable === false ? ' <span class="badge b-neutral">locked</span>' : ""}<br><span class="muted">${esc(note || p.detail || "")}</span></span></div>`;
+}
+function govDecisionHtml(gov) {
+  if (!gov) return null;
+  if (gov.status === "degraded") return `<span class="muted">Governance degraded${gov.reason ? " — " + esc(trunc(gov.reason, 120)) : ""}</span>`;
+  const rows = (gov.prerequisites || []).map(p => govRowHtml(p, p.satisfied ? "✓" : "✗", p.satisfied ? "var(--green)" : "var(--red)", p.reason)).join("");
+  const head = `<span class="muted">${gov.satisfied ?? "?"} satisfied · ${gov.unsatisfied ?? 0} unsatisfied${(gov.blocking || []).length ? ` · enforcing: ${gov.blocking.map(esc).join(", ")}` : ""}</span>`;
+  return head + rows;
+}
+async function agentGovSection(agentId) {
+  const holder = document.createElement("div");
+  holder.className = "d-sec";
+  holder.innerHTML = `<h3>Prerequisites</h3><div class="val"><div class="skel" style="height:14px;margin-bottom:6px"></div><div class="skel" style="height:14px"></div></div>`;
+  $("drawerBody").appendChild(holder);
+  try {
+    const g = await api(`/agents/${encodeURIComponent(agentId)}/governance`);
+    const live = g.live_state || {};
+    const rows = (g.profile && g.profile.prerequisites || []).map(p => {
+      const st = live[p.id];
+      if (st) return govRowHtml(p, st.satisfied ? "✓" : "✗", st.satisfied ? "var(--green)" : "var(--red)", st.reason);
+      return govRowHtml(p, "•", "var(--amber)", "evaluated on each intercepted call");
+    }).join("");
+    const meta = `<div class="muted" style="margin-top:8px">v${g.profile ? g.profile.version : "?"} · ${esc(g.profile ? g.profile.source : "?")} · defaults derived from recorded context — editable via PUT /agents/${encodeURIComponent(agentId)}/governance</div>`;
+    holder.querySelector(".val").innerHTML = rows + meta;
+  } catch { holder.querySelector(".val").innerHTML = `<span class="muted">Governance unavailable</span>`; }
+}
+/* ── Blockers (live "why can't this agent act right now") renderers ── */
+const BLK_STATUS = { BLOCKED: "b-crit", DEGRADED: "b-med", CLEAR: "b-low" };
+function blkRowHtml(b) {
+  const mark = b.severity === "hard" ? "⛔" : "⚠";
+  const color = b.severity === "hard" ? "var(--red)" : "var(--amber)";
+  const since = b.since ? ` <span class="muted">since ${esc(fmtT(b.since))}</span>` : "";
+  let act = "";
+  if (b.clear_action) {
+    if (b.clear_action.endpoint.startsWith("/agents/release/"))
+      act = ` <button class="btn btn-ok" style="padding:2px 10px;font-size:11px" data-bact="release" data-agent="${esc(b.clear_action.endpoint.split("/").pop())}">Release</button>`;
+    else if (b.clear_action.endpoint.startsWith("/approvals/"))
+      act = ` <button class="btn btn-ok" style="padding:2px 10px;font-size:11px" data-dact="approve" data-id="${esc(b.clear_action.endpoint.split("/")[2])}">Approve</button>`;
+  }
+  return `<div class="val" style="margin-bottom:8px;display:flex;gap:8px;align-items:baseline"><span style="color:${color}" aria-hidden="true">${mark}</span><span><b>${esc(b.reason)}</b>${since}${b.related_prereq ? ` <span class="badge b-neutral">${esc(b.related_prereq)}</span>` : ""}${b.clear_hint ? `<br><span class="muted">${esc(b.clear_hint)}</span>` : ""}${act}</span></div>`;
+}
+function blkDecisionHtml(blk) {
+  if (!blk) return null;
+  if (blk.status === "degraded") return `<span class="muted">Blocker view degraded${blk.reason ? " — " + esc(trunc(blk.reason, 120)) : ""}</span>`;
+  if (blk.status === "CLEAR" && !(blk.blockers || []).length) return `<span class="muted">No blocking conditions at decision time</span>`;
+  const head = `<span class="badge ${BLK_STATUS[blk.status] || "b-neutral"}">${esc(blk.status)}</span> <span class="muted">${(blk.blockers || []).length} active condition(s)</span>`;
+  return head + (blk.blockers || []).map(blkRowHtml).join("");
+}
+async function agentBlockersSection(agentId) {
+  const holder = document.createElement("div");
+  holder.className = "d-sec";
+  holder.dataset.bsec = agentId;  // O2: lets BLOCKERS_CHANGED replace this section live
+  holder.innerHTML = `<h3>Blockers</h3><div class="val"><div class="skel" style="height:14px;margin-bottom:6px"></div><div class="skel" style="height:14px"></div></div>`;
+  $("drawerBody").appendChild(holder);
+  try {
+    const b = await api(`/agents/${encodeURIComponent(agentId)}/blockers`);
+    if (b.status === "degraded") {
+      holder.querySelector(".val").innerHTML = `<span class="muted">Blocker view degraded${b.reason ? " — " + esc(trunc(b.reason, 120)) : ""}</span>`; return;
+    }
+    const rows = (b.blockers || []).length
+      ? (b.blockers || []).map(blkRowHtml).join("")
+      : `<span class="muted">No blockers — agent is free to act</span>`;
+    const head = `<span class="badge ${BLK_STATUS[b.status] || "b-neutral"}">${esc(b.status)}</span>`;
+    holder.querySelector(".val").innerHTML = head + rows;
+  } catch { holder.querySelector(".val").innerHTML = `<span class="muted">Blockers unavailable</span>`; }
+}
+function actRelease(agent) {
+  if (!agent) return;
+  fetch(`/agents/release/${encodeURIComponent(agent)}`, { method: "POST" })
+    .then(r => r.json())
+    .then(() => { toast(`Agent ${agent} released`); closeDrawer(); setTimeout(loadAll, 400); })
+    .catch(e => toast("Release failed: " + e.message));
+}
+/* ── Downstream Effects ("what happens if it runs") renderers ── */
+const FX_CLASS = { HEALTHY: "b-low", DEGRADED: "b-med", QUARANTINED: "b-crit", UNKNOWN: "b-neutral" };
+const FX_STATUS = { HEALTHY_CHAIN: "b-low", NO_CONSUMERS: "b-neutral", DEGRADED: "b-med", QUARANTINED: "b-crit" };
+function fxConsumerHtml(c) {
+  const trust = c.trust_score != null ? ` · trust ${Math.round(c.trust_score)}` : "";
+  const iso = c.isolated ? ' <span class="badge b-crit">isolated</span>' : "";
+  return `<div class="val" style="margin-bottom:6px;display:flex;gap:8px;align-items:baseline"><span class="badge ${FX_CLASS[c.impact_class] || "b-neutral"}">${esc(c.impact_class)}</span><span><b>${esc(c.id)}</b>${esc(trust)}${iso}<br><span class="muted">${esc(c.note || "")}</span></span></div>`;
+}
+function fxDecisionHtml(fx) {
+  if (!fx) return null;
+  if (fx.status === "degraded") return `<span class="muted">Effects view degraded</span>`;
+  let html = `<span class="badge ${FX_STATUS[fx.status] || "b-neutral"}">${esc(fx.status.replace(/_/g, " "))}</span>`;
+  if (fx.action) html += ` <span class="muted">on ${esc(fx.action)} of <code>${esc(fx.tool || "?")}</code>${fx.advisory_applied ? " · <b>advisory applied (ALLOWED→FLAGGED)</b>" : ""}</span>`;
+  html += fx.impact ? `<div class="val" style="margin:6px 0">${esc(fx.impact)}</div>` : "";
+  if ((fx.consumers || []).length) html += (fx.consumers || []).map(fxConsumerHtml).join("");
+  else html += `<span class="muted">no declared downstream consumers</span>`;
+  const systemic = (fx.systemic || []).filter(s => s.type !== "audit_trail" || fx.action === "ALLOWED");
+  if (systemic.length) html += `<div class="muted" style="margin-top:6px">${systemic.map(s => `• ${esc(s.note)}`).join("<br>")}</div>`;
+  return html;
+}
+async function agentEffectsSection(agentId) {
+  const holder = document.createElement("div");
+  holder.className = "d-sec";
+  holder.innerHTML = `<h3>Downstream Effects</h3><div class="val"><div class="skel" style="height:14px;margin-bottom:6px"></div><div class="skel" style="height:14px"></div></div>`;
+  $("drawerBody").appendChild(holder);
+  try {
+    const fx = await api(`/agents/${encodeURIComponent(agentId)}/effects`);
+    if (fx.status === "degraded") {
+      holder.querySelector(".val").innerHTML = `<span class="muted">Effects view degraded${fx.reason ? " — " + esc(trunc(fx.reason, 120)) : ""}</span>`; return;
+    }
+    let html = `<span class="badge ${FX_STATUS[fx.status] || "b-neutral"}">${esc(fx.status.replace(/_/g, " "))}</span>`;
+    if ((fx.consumers || []).length) html += (fx.consumers || []).map(fxConsumerHtml).join("");
+    else html += `<span class="muted">no declared downstream consumers — effect stays with the agent and the audit trail</span>`;
+    html += `<div class="muted" style="margin-top:6px">${(fx.systemic || []).map(s => `• ${esc(s.note)}`).join("<br>")}</div>`;
+    holder.querySelector(".val").innerHTML = html;
+  } catch { holder.querySelector(".val").innerHTML = `<span class="muted">Effects unavailable</span>`; }
+}
+function openDrawerForDecision(d) {
+  const revsP = llmReviewsFor(d.agent_id);
+  const aprs = state.data.approvals.filter(a => a.agent_id === d.agent_id && a.status === "PENDING");
+  const iso = state.data.isolated.find(i => i.agent_id === d.agent_id);
+  const badges = `<span class="badge ${SEV[d.risk_level] || "b-neutral"}">${esc(d.risk_level)}</span> <span class="badge ${RES[d.action] || "b-neutral"}">${esc(resLabel(d.action))}</span>` + (d.honeypot_hit ? ' <span class="badge b-crit">HONEYPOT</span>' : "");
+  const sections = [
+    ["Overview", esc(d.decision_summary || "–")],
+    ["Agent", esc(d.agent_id) + (iso ? ` — <span style="color:var(--red-text);font-weight:600">isolated</span>: ${esc(trunc(iso.reason, 90))}` : "")],
+    ["Action", `<code>${esc(d.tool)}</code>`],
+    ["Target", `<code>${esc(trunc(JSON.stringify(d.parameters || {}), 140))}</code>`],
+    ["Decision", `Risk <b>${esc(d.risk_level)} (${d.risk_score ?? "–"}/100)</b> · Trust ${d.trust_score ?? "–"}/100${d.threat_tags && d.threat_tags.length ? `<br>Tags: ${d.threat_tags.map(t => `<code>${esc(t)}</code>`).join(" ")}` : ""}`],
+    ["Evidence", esc((d.block_reasons && d.block_reasons.length ? d.block_reasons.join(" · ") : (d.intent_reason || d.risk_reason || "No blocking conditions")) )],
+  ];
+  if (d.audit_sequence != null) sections.push(["Audit Metadata", `<code>#${d.audit_sequence} · ${esc((d.audit_hash || "").slice(0, 20))}…</code> (hash-chained, verify at /audit/verify)`]);
+  const govHtml = govDecisionHtml(d.governance);
+  if (govHtml != null) sections.push(["Prerequisites", govHtml]);
+  const blkHtml = blkDecisionHtml(d.blockers);
+  if (blkHtml != null) sections.push(["Blockers at Decision Time", blkHtml]);
+  const fxHtml = fxDecisionHtml(d.effects);
+  if (fxHtml != null) sections.push(["Downstream Effects", fxHtml]);
+  const foot = [];
+  if (!iso) foot.push(`<button class="btn btn-red" data-dact="isolate" data-agent="${esc(d.agent_id)}">Isolate Agent</button>`);
+  for (const a of aprs.slice(0, 1)) { foot.push(`<button class="btn btn-ok" data-dact="approve" data-id="${esc(a.id)}">Approve</button>`); foot.push(`<button class="btn btn-no" data-dact="reject" data-id="${esc(a.id)}">Reject</button>`); }
+  openDrawer({ title: `${d.tool} — ${d.agent_id}`, badges, sections, foot: foot.join("") });
+  revsP.then(revs => {
+    if (revs.length) { const el = document.createElement("div"); el.className = "d-sec"; el.innerHTML = `<h3>LLM Opinion</h3>` + revs.map(r => `<div class="val" style="margin-bottom:8px"><span class="badge ${SEV[r.verdict.risk_level]}">${esc(r.verdict.risk_level)}</span> ${esc(r.verdict.reasoning)}` ).join(""); $("drawerBody").appendChild(el); }
+  });
+}
+function openDrawerFromEvent(kind, d, ts) {
+  if (kind === "decision") { openDrawerForDecision(d); return; }
+  if (kind === "threat" && d.decision) { openDrawerForDecision(d.decision); return; } // enriched from decision store
+  openDrawer({
+    title: incidentTitle({ kind, data: kind === "threat" ? d : { reason: d.decision_summary } }),
+    badges: `<span class="badge b-crit">${esc(kind === "threat" ? d.threat_level : "CRITICAL")}</span>`,
+    sections: [
+      ["Agent", esc(d.agent_id || "–")],
+      ["Action", `<code>${esc(d.tool || "–")}</code>`],
+      ["Time", fmtT(ts)],
+      ["Details", kind === "threat" ? esc(d.reasoning || JSON.stringify(d, null, 1)) : esc(d.decision_summary || "")],
+    ],
+    foot: `<button class="btn btn-red" data-dact="isolate" data-agent="${esc(d.agent_id || "")}">Isolate Agent</button>`,
+  });
+}
+</script>
+<script>
+/* ── Actions ─────────────────────────────────────────────────── */
+async function actApproveReject(id, act) {
+  try {
+    await fetch(`/approvals/${id}/${act}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ decided_by: "dashboard-operator" }) });
+    toast(act === "approve" ? `Approval ${id} granted — agent released` : `Approval ${id} rejected — isolation kept`);
+    setTimeout(loadAll, 400);
+  } catch (e) { toast("Action failed: " + e.message); }
+}
+async function actIsolate(agent) {
+  if (!agent) return;
+  try {
+    await fetch(`/agents/isolate/${agent}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ reason: "Manual isolation from dashboard" }) });
+    toast(`Agent ${agent} isolated`); closeDrawer(); setTimeout(loadAll, 400);
+  } catch (e) { toast("Isolation failed: " + e.message); }
+}
+document.addEventListener("click", e => {
+  const b = e.target.closest("[data-apr]"); if (b) { e.stopPropagation(); actApproveReject(b.dataset.apr, b.dataset.act); return; }
+  const rb = e.target.closest("[data-bact='release']"); if (rb) { e.stopPropagation(); actRelease(rb.dataset.agent); return; }
+  const f = e.target.closest("[data-dact]"); if (f) { e.stopPropagation(); if (f.dataset.dact === "isolate") actIsolate(f.dataset.agent); else actApproveReject(f.dataset.id, f.dataset.dact); return; }
+  const row = e.target.closest("#feedBody tr[data-agent]"); if (row) {
+    // tsfix both sides: feed rows store second-precision timestamps, decisions
+    // carry full-precision ISO strings (microseconds + timezone).
+    const rec = state.data.logs.find(r => r.event && r.event.event_type === "TOOL_INTERCEPTED" && r.event.decision && tsfix(r.event.decision.timestamp) === row.dataset.ts && r.event.decision.agent_id === row.dataset.agent);
+    if (rec) openDrawerForDecision(rec.event.decision);
+    else openDrawerFromEvent("decision", { agent_id: row.dataset.agent, tool: row.dataset.tool, action: row.dataset.act, risk_level: "CRITICAL", parameters: {} }, row.dataset.ts);
+    return;
+  }
+  const tr = e.target.closest(".threat-row"); if (tr) {
+    const th = state.data.threats.find(x => x.agent_id === tr.dataset.agent && x.tool === tr.dataset.tool && tsfix(x.timestamp) === tr.dataset.ts);
+    if (th) openDrawerFromEvent("threat", th, tr.dataset.ts);
+    return;
+  }
+  const ar = e.target.closest("tr[data-dtype='agent']"); if (ar) {
+    const a = state.data.agents.find(x => x.agent_id === ar.dataset.agent);
+    if (a) { state.drawerAgent = a.agent_id; const iso = state.data.isolated.find(i => i.agent_id === a.agent_id); openDrawer({ title: a.agent_id, badges: stateBadge({ ...a, isolated: !!iso }), sections: [
+      ["Trust", `${Math.round(a.trust_score)}/100 · ${esc(a.containment_level || "NONE")}`],
+      ["Containment reason", esc(a.containment_reason || "None — operating within policy")],
+      ["Actions", `${a.total_actions} total · ${a.blocked_actions} blocked · ${a.flagged_actions} flagged · ${a.allowed_actions} allowed`],
+      ["Session", `peak ${a.peak_trust} · floor ${a.floor_trust} · ${a.session_count} session(s)`],
+    ], foot: iso ? "" : `<button class="btn btn-red" data-dact="isolate" data-agent="${esc(a.agent_id)}">Isolate Agent</button>` });
+      agentGovSection(a.agent_id);
+      agentBlockersSection(a.agent_id);
+      agentEffectsSection(a.agent_id); }
+    return;
+  }
+  const aa = e.target.closest("tr[data-dtype='approval']"); if (aa) {
+    const a = state.data.approvals.find(x => x.id === aa.dataset.id);
+    if (a) openDrawer({ title: `Approval ${a.id}`, badges: `<span class="badge ${a.status === "PENDING" ? "b-med" : "b-low"}">${esc(a.status)}</span>`, sections: [
+      ["Request", `<code>${esc(a.tool)}</code>`], ["Agent", esc(a.agent_id)], ["Reason", esc(a.reason || "–")],
+      ["Decision ref", `<pre style="font-size:11px">${esc(JSON.stringify(a.decision_ref || {}, null, 1))}</pre>`],
+    ], foot: a.status === "PENDING" ? `<button class="btn btn-ok" data-dact="approve" data-id="${esc(a.id)}">Approve</button><button class="btn btn-no" data-dact="reject" data-id="${esc(a.id)}">Reject</button>` : "" });
+  }
+});
+document.addEventListener("dblclick", e => { const v = e.target.closest(".hp-val"); if (v) { e.target.textContent = v.dataset.full; setTimeout(() => e.target.textContent = trunc(v.dataset.full, 34), 2500); } });
+document.addEventListener("click", e => { const v = e.target.closest(".audit-item"); if (v && !e.target.closest(".audit-d")) v.classList.toggle("open"); });
+
+/* ── Header controls ─────────────────────────────────────────── */
+$("rangeSeg").addEventListener("click", e => { const b = e.target.closest("button[data-min]"); if (!b) return;
+  state.rangeMin = +b.dataset.min; [...$("rangeSeg").children].forEach(x => x.classList.toggle("on", x === b)); renderAll(); });
+$("globalSearch").addEventListener("input", e => { state.search = e.target.value.trim(); renderFeed(); renderThreats(); renderAgents(); renderHoneypot(); renderAudit(); });
+$("filterBtn").addEventListener("click", e => { e.stopPropagation(); const p = $("filterPop"); const r = $("filterBtn").getBoundingClientRect(); p.style.top = (r.bottom + 8) + "px"; p.style.left = Math.max(8, r.right - 250) + "px"; p.classList.toggle("on"); });
+document.addEventListener("click", e => { if (!e.target.closest("#filterPop")) $("filterPop").classList.remove("on"); });
+$("filterReset").addEventListener("click", () => { document.querySelectorAll("#filterPop input[data-f]").forEach(c => c.checked = true); $("filterAgent").value = ""; });
+$("filterApply").addEventListener("click", () => {
+  const f = { sev: new Set(), res: new Set() };
+  document.querySelectorAll("#filterPop input[data-f]").forEach(c => c.checked && f[c.dataset.f].add(c.value));
+  state.filters = { sev: f.sev, res: f.res, agent: $("filterAgent").value.trim().toLowerCase() };
+  $("filterBtn").classList.toggle("has", f.sev.size < 4 || f.res.size < 4 || !!state.filters.agent);
+  $("filterPop").classList.remove("on"); renderAll();
+});
+$("newPill").addEventListener("click", () => { state.newCount = 0; $("newPill").classList.remove("on"); });
+$("feedViewAll").addEventListener("click", () => { state.feedExpanded = !state.feedExpanded; renderFeed(); });
+$("llmExpand").addEventListener("click", () => { state.llmExpanded = !state.llmExpanded; $("llmMore").classList.toggle("on", state.llmExpanded); $("llmExpand").textContent = state.llmExpanded ? "Hide Analysis →" : "View Analysis →"; });
+document.querySelectorAll("#nav .nav-item[data-sec]").forEach(b => b.addEventListener("click", () => {
+  document.querySelectorAll("#nav .nav-item").forEach(x => x.classList.toggle("active", x === b));
+  const BLOCKS = ["kpis","sec-pt","sec-feed","sec-threats","sec-agents","sec-llm","sec-approvals","sec-honeypot","sec-audit"];
+  const only = b.dataset.sec === "top" ? null : b.dataset.sec;
+  BLOCKS.forEach(id => { const el = $(id); if (el) el.style.display = (only && id !== only) ? "none" : ""; });
+  document.querySelector(".content").classList.toggle("single", !!only);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}));
+$("drawerClose").addEventListener("click", closeDrawer);
+$("drawerBg").addEventListener("click", closeDrawer);
+$("retryBtn").addEventListener("click", () => { loadAll().catch(() => {}); connectWS(); });
+
+/* ── Real-time WebSocket (spec §27: no scroll hijacking) ─────── */
+function setLive(on) { state.wsUp = on; $("liveDot").classList.toggle("off", !on); $("liveText").textContent = on ? "Connected" : "Reconnecting…"; }
+function setDegraded(on) {
+  $("degradedBanner").classList.toggle("on", on);
+  if (on) $("degradedTime").textContent = state.lastUpdate ? new Date(state.lastUpdate).toLocaleTimeString() : "–";
+  const sys = $("sysSecure"); sys.style.background = on ? "var(--amber-soft)" : "";
+  $("sysStatusText").textContent = on ? "Live stream degraded — stale data shown" : "All core services online";
+}
+function connectWS() {
+  const proto = location.protocol === "https:" ? "wss" : "ws";
+  const ws = new WebSocket(`${proto}://${location.host}/ws/threats`);
+  ws.onopen = () => setLive(true);
+  ws.onclose = () => { setLive(false); setTimeout(connectWS, 3000); };
+  ws.onerror = () => ws.close();
+  ws.onmessage = m => {
+    let ev; try { ev = JSON.parse(m.data); } catch { return; }
+    if (ev.type === "THREAT_EVENT" && ev.decision) {
+      const d = ev.decision;
+      const known = state.data.logs.some(r => r.event && r.event.event_type === "TOOL_INTERCEPTED" && r.event.decision && r.event.decision.timestamp === d.timestamp && r.event.decision.agent_id === d.agent_id);
+      if (!known) {
+        state.data.logs.push({ sequence: d.audit_sequence, timestamp: d.timestamp, event: { event_type: "TOOL_INTERCEPTED", decision: d } });
+        if (inRange(d.timestamp) && matchQ(`${d.agent_id} ${d.tool}`) && filterPass(d.risk_level, d.action, d.agent_id)) { state.newCount++; $("newCount").textContent = state.newCount; $("newPill").classList.add("on"); }
+      }
+      renderKpis(); renderPriority();
+      if (state.newCount === 0) renderFeed();
+      renderThreats(); renderAudit(); renderLLM();
+      state.lastUpdate = Date.now(); $("lastUpd").textContent = "Last updated: " + new Date().toLocaleTimeString();
+    } else if (ev.type === "ISOLATED_CALL_REJECTED") {
+      state.data.isolated = state.data.isolated.filter(i => i.agent_id !== ev.agent_id);
+      state.data.isolated.push({ agent_id: ev.agent_id, reason: "Quarantined", isolated_at: new Date().toISOString() });
+      state.newCount++; $("newCount").textContent = state.newCount; $("newPill").classList.add("on");
+      renderAgents(); renderAudit(); state.lastUpdate = Date.now();
+    } else if (ev.type === "BLOCKERS_CHANGED") {
+      // O2: live blocker-status push (isolate/release/revoke/register/approve/governance/
+      // trust-containment transition). Patch the row dot immediately; refresh the
+      // open drawer's Blockers section in place instead of waiting for the 5 s poll.
+      const a = state.data.agents.find(x => x.agent_id === ev.agent_id);
+      if (a) { a.blocker_status = ev.status; renderAgents(); }
+      if (state.drawerAgent === ev.agent_id) {
+        const old = $("drawerBody").querySelector("[data-bsec]");
+        if (old) { old.remove(); agentBlockersSection(ev.agent_id); }
+      }
+    }
+  };
+}
+/* "N new events" pill click: fold new rows in immediately */
+$("newPill").addEventListener("click", () => { renderFeed(false); });
+
+/* ── Keyboard (spec §22, §30) ────────────────────────────────── */
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { closeDrawer(); $("filterPop").classList.remove("on"); }
+  if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); $("globalSearch").focus(); }
+});
+
+/* ── Init ────────────────────────────────────────────────────── */
+loadAll().catch(err => { console.error(err); setDegraded(true); });
+connectWS();
+setInterval(() => { loadAll().catch(() => setDegraded(true)); }, 5000);
+</script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+policies:
+
+  - name: block-credential-access
+    description: Block any agent accessing credential files
+    applies_to: all
+    condition:
+      tool_matches: ["read_file", "get_secret", "read_credentials"]
+      value_contains: ["/etc/passwd", "/.env", "/.aws", "/secrets", "api_key", "private_key"]
+    action: BLOCK
+    severity: CRITICAL
+
+  - name: block-destructive-commands
+    description: Block shell commands that destroy data
+    applies_to: all
+    condition:
+      tool_matches: ["run_command", "execute_script", "exec"]
+      value_contains: ["rm -rf", "del /f", "format", "drop table", "truncate"]
+    action: BLOCK
+    severity: CRITICAL
+
+  - name: flag-data-export
+    description: Flag large data export attempts
+    applies_to: all
+    condition:
+      tool_matches: ["export_data", "dump_database", "backup"]
+      value_contains: ["all", "dump", "backup", "export"]
+    action: FLAG
+    severity: HIGH
+
+  - name: flag-system-directory
+    description: Flag access to system directories
+    applies_to: all
+    condition:
+      tool_matches: ["read_file", "write_file", "list_directory"]
+      value_contains: ["/var/", "/sys/", "/proc/", "C:\\Windows"]
+    action: FLAG
+    severity: MEDIUM
+
+  - name: block-sandboxed-agents
+    description: Block all actions from sandboxed agents
+    applies_to: sandboxed
+    condition:
+      agent_state: ["sandboxed"]
+    action: BLOCK
+    severity: CRITICAL

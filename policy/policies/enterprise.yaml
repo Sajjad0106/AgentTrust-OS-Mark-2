@@ -1,0 +1,26 @@
+policies:
+
+  - name: block-after-trust-threshold
+    description: Block agents whose trust score drops below 40
+    applies_to: all
+    condition:
+      trust_score_below: 40
+    action: BLOCK
+    severity: CRITICAL
+
+  - name: block-critical-blast-radius
+    description: Require human approval for CRITICAL blast radius agents
+    applies_to: all
+    condition:
+      blast_level_matches: ["CRITICAL"]
+      tool_matches: ["delete_file", "export_data", "run_command"]
+    action: BLOCK
+    severity: CRITICAL
+
+  - name: flag-high-intent-gap
+    description: Flag actions where intent gap score exceeds 70
+    applies_to: all
+    condition:
+      intent_gap_above: 70
+    action: FLAG
+    severity: HIGH

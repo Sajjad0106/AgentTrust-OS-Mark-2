@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+httpx
+python-dotenv
+fastapi
+uvicorn
+httpx
+python-dotenv
+pyyaml
+websockets

@@ -1,0 +1,54 @@
+:root {
+  /* Colors */
+  --color-text: #ffffff;
+  --color-local-accent: #e5e7eb;
+  --color-local-accent-2: #d4af37;
+  --color-text-2: #39ff14;
+  --color-text-3: #bf00ff;
+  --color-surface: #050505;
+  --color-text-4: #ffd700;
+  --color-text-5: #00ff9d;
+  --color-text-6: #00e5ff;
+
+  /* Typography */
+  --font-type-1-family: ui-sans-serif;
+  --font-type-1-size: 16px;
+  --font-type-1-weight: 400;
+  --font-type-1-line-height: 24px;
+  --font-type-2-family: ui-monospace;
+  --font-type-2-size: 10px;
+  --font-type-2-weight: 700;
+  --font-type-2-line-height: 15px;
+  --font-type-3-family: ui-monospace;
+  --font-type-3-size: 10.5px;
+  --font-type-3-weight: 400;
+  --font-type-3-line-height: 17.0625px;
+  --font-type-4-family: ui-monospace;
+  --font-type-4-size: 9px;
+  --font-type-4-weight: 400;
+  --font-type-4-line-height: 13.5px;
+  --font-type-5-family: ui-monospace;
+  --font-type-5-size: 10px;
+  --font-type-5-weight: 400;
+  --font-type-5-line-height: 15px;
+
+  /* Spacing */
+  --spacing-space-1: 8px;
+  --spacing-space-2: 16px;
+  --spacing-space-3: 4px;
+  --spacing-space-4: 12px;
+  --spacing-space-5: 14px;
+  --spacing-space-6: 2px;
+  --spacing-space-7: 24px;
+  --spacing-space-8: 6px;
+  --spacing-space-9: 20px;
+  --spacing-space-10: 32px;
+
+  /* Border Radius */
+  --radius-radius-1: 9999px;
+  --radius-radius-2: 24px;
+  --radius-radius-3: 12px;
+  --radius-radius-4: 4px;
+  --radius-radius-5: 8px;
+
+}
